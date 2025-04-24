@@ -13,12 +13,7 @@ def preprocess_data():
         vocab_size = len(vocab)
     return lines, vocab, vocab_size
 
-def batch(batch_data, vocab, device):
-    src = [line[0] for line in batch_data]  
-    tgt = [line[1] for line in batch_data]  
-    src_tensor = torch.tensor([[vocab[char] for char in seq] for seq in src], dtype=torch.long, device=device)
-    tgt_tensor = torch.tensor([[vocab[char] for char in seq] for seq in tgt], dtype=torch.long, device=device)
-    return src_tensor, tgt_tensor
+
 
 def batch(batch_data, vocab, device):
     src = [line[0] for line in batch_data]

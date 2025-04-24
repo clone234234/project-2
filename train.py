@@ -13,13 +13,12 @@ def preprocess_data():
         vocab_size = len(vocab)
     return lines, vocab, vocab_size
 
-def generate_mask(src, tgt, pad_idx=0):
-    src_mask = (src != pad_idx).unsqueeze(1).unsqueeze(2)
-    tgt_mask = (tgt != pad_idx).unsqueeze(1).unsqueeze(2)
-    seq_length = tgt.size(1)
-    nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
-    tgt_mask = tgt_mask & nopeak_mask
-    return src_mask, tgt_mask
+def batch(batch_data, vocab, device):
+    src = [line[0] for line in batch_data]  
+    tgt = [line[1] for line in batch_data]  
+    src_tensor = torch.tensor([[vocab[char] for char in seq] for seq in src], dtype=torch.long, device=device)
+    tgt_tensor = torch.tensor([[vocab[char] for char in seq] for seq in tgt], dtype=torch.long, device=device)
+    return src_tensor, tgt_tensor
 
 def batch(batch_data, vocab, device):
     src = [line[0] for line in batch_data]
@@ -28,9 +27,26 @@ def batch(batch_data, vocab, device):
     tgt_tensor = torch.tensor([[vocab[char] for char in seq] for seq in tgt], dtype=torch.long, device=device)
     return src_tensor, tgt_tensor
 
-def train_transformer(model, data, vocab_size, num_epochs=10, batch_size=32, learning_rate=0.001, vocab=None):
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    criterion = nn.CrossEntropyLoss(ignore_index=0) 
-
+def train_transformer(model, data, vocab, num_epochs=10, batch_size=32, device='cpu'):
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+        for i in range (0, len(data), batch_size):
+            batch_data = data[i:i+batch_size]
+            src_tensor, tgt_tensor = batch(batch_data, vocab, device)
+            
+            src_mask = (src_tensor != 0).unsqueeze(1).unsqueeze(2)  
+            tgt_mask = (tgt_tensor != 0).unsqueeze(1).unsqueeze(2)  
+            
+            optimizer.zero_grad()
+            output = model(src_tensor, tgt_tensor[:, :-1], src_mask, tgt_mask[:, :-1, :-1])
+            loss = criterion(output.view(-1, output.size(-1)), tgt_tensor[:, 1:].view(-1))
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data)}')
 
 

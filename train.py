@@ -21,14 +21,13 @@ def generate_mask(src, tgt, pad_idx=0):
     tgt_mask = tgt_mask & nopeak_mask
     return src_mask, tgt_mask
 
-def batch(batch, vocab, device):
-    src = torch.tensor([[vocab[char] for char in line[0]] for line in batch], dtype=torch.long, device=device)
-    tgt = torch.tensor([[vocab[char] for char in line[1]] for line in batch], dtype=torch.long, device=device)
+def batch(batch_data, vocab, device):
+    src = [line[0] for line in batch_data]
+    tgt = [line[1] for line in batch_data]
     src_tensor = torch.tensor([[vocab[char] for char in seq] for seq in src], dtype=torch.long, device=device)
     tgt_tensor = torch.tensor([[vocab[char] for char in seq] for seq in tgt], dtype=torch.long, device=device)
-    
     return src_tensor, tgt_tensor
- 
+
 def train_transformer(model, data, vocab_size, num_epochs=10, batch_size=32, learning_rate=0.001, vocab=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss(ignore_index=0) 

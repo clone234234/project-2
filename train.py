@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn 
 from torch.nn import functional as F
-from transformer import Transformer, Encoder, Decoder
+from transformer import Transformer
 
 def preprocess_data():
     with open('input.txt', 'r', encoding='utf-8') as f:
@@ -21,26 +21,17 @@ def generate_mask(src, tgt, pad_idx=0):
     tgt_mask = tgt_mask & nopeak_mask
     return src_mask, tgt_mask
 
+def batch(batch, vocab, device):
+    src = torch.tensor([[vocab[char] for char in line[0]] for line in batch], dtype=torch.long, device=device)
+    tgt = torch.tensor([[vocab[char] for char in line[1]] for line in batch], dtype=torch.long, device=device)
+    src_tensor = torch.tensor([[vocab[char] for char in seq] for seq in src], dtype=torch.long, device=device)
+    tgt_tensor = torch.tensor([[vocab[char] for char in seq] for seq in tgt], dtype=torch.long, device=device)
+    
+    return src_tensor, tgt_tensor
+ 
 def train_transformer(model, data, vocab_size, num_epochs=10, batch_size=32, learning_rate=0.001, vocab=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss(ignore_index=0) 
 
-    for epoch in range(num_epochs):
-        total_loss = 0
-        for i in range(0, len(data), batch_size):
-            batch_data = data[i:i+batch_size]
-            src = torch.tensor([[vocab[char] for char in line[0]] for line in batch_data], dtype=torch.long)
-            tgt = torch.tensor([[vocab[char] for char in line[1]] for line in batch_data], dtype=torch.long)
 
-            src_mask, tgt_mask = generate_mask(src, tgt)
 
-            optimizer.zero_grad()
-            output = model(src, tgt[:, :-1], src_mask, tgt_mask[:, :-1])
-            loss = criterion(output.view(-1, vocab_size), tgt[:, 1:].view(-1))
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-
-        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data)}')
-def generate(model, input_seq, vocab, max_length

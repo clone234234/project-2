@@ -23,7 +23,7 @@ def generate_mask(src, tgt, pad_idx=0):
 
 def train_transformer(model, data, vocab_size, num_epochs=10, batch_size=32, learning_rate=0.001, vocab=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    criterion = nn.CrossEntropyLoss(ignore_index=0)  # ignore padding index
+    criterion = nn.CrossEntropyLoss(ignore_index=0) 
 
     for epoch in range(num_epochs):
         total_loss = 0
@@ -43,3 +43,4 @@ def train_transformer(model, data, vocab_size, num_epochs=10, batch_size=32, lea
             total_loss += loss.item()
 
         print(f'Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data)}')
+def generate(model, input_seq, vocab, max_length

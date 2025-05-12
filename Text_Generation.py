@@ -1,5 +1,6 @@
 import torch
-from train import TransformerModel
+
+
 def generate_text(model, vocab, start_text, max_length=50, device='cpu'):
     model.eval()
     idx_to_char = {idx: char for char, idx in vocab.items()}
@@ -55,4 +56,3 @@ def chat(model, vocab, device, max_response_length=50):
         print("Bot:", ''.join(response))
 
 if __name__ == "__main__":
-    

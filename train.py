@@ -72,20 +72,59 @@ def train_transformer(model, data, vocab, num_epochs=10, batch_size=32, device='
             
             optimizer.zero_grad()
             output = model(src_tensor, tgt_tensor[:, :-1], src_mask, tgt_mask[:, :-1, :-1])
-            loss = criterion(output.view(-1, output.size(-1)), tgt_tensor[:, 1:].view(-1))
+            loss = criterion(output.view(-1, output.size(-1)), tgt_tensor[:, 1:].reshape(-1))
             loss.backward()
             optimizer.step()
             
             total_loss += loss.item()
         print(f'Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data)}')
+    
+def generate_text(model, vocab, start_text, max_length=50, device='cpu'):
+    model.eval()
+    idx_to_char = {idx: char for char, idx in vocab.items()}
+    
+    start_indices = [vocab.get(char, vocab['<pad>']) for char in start_text]
+    input_tensor = torch.tensor(start_indices, dtype=torch.long, device=device).unsqueeze(0)
+    generated_text = start_text
+
+    for _ in range(max_length):
+        src_mask = (input_tensor != vocab['<pad>']).unsqueeze(1).unsqueeze(2)
+
+        with torch.no_grad():
+            output = model(input_tensor, input_tensor, src_mask, src_mask)
+            next_token_logits = output[:, -1, :] 
+            next_token = torch.argmax(next_token_logits, dim=-1).item()
+
+        generated_text += idx_to_char.get(next_token, '')  
+        input_tensor = torch.cat(
+            [input_tensor, torch.tensor([[next_token]], dtype=torch.long, device=device)],
+            dim=1
+        )
+
+    return generated_text
+def chat (model, vocab,device='gou'):
+    model.eval()
+    idx_to_char = {idx: char for char, idx in vocab.items()}
+    while True: 
+        user= input("You: ")
+        if user.lower() == 'exit':
+            break
+
+
+  
 
 if __name__ == "__main__":
     lines, vocab, vocab_size = preprocess_data()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Transformer(src_vocab_size=vocab_size, tgt_vocab_size=vocab_size, d_model=512, num_heads=8, d_ff=2048, num_layers=6, dropout=0.1).to(device)
     train_transformer(model, lines, vocab, num_epochs=10, batch_size=32, device=device)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    start_text = "Hello"  
+    generated_text = generate_text(model, vocab, start_text, device=device)
+    print(f"Generated text: {generated_text}")
+    torch.save(model.state_dict(), 'transformer_model.pth')
+
+
 
 
 

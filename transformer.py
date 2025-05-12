@@ -31,7 +31,15 @@ class MultiHeadAttention(nn.Module):
         
     
         if mask is not None:
-            scores = scores.masked_fill(mask == 0, -1e9)
+            seq_len_q, seq_len_k = scores.size(-2), scores.size(-1)
+            if mask.dim() == 2:
+                mask = mask.unsqueeze(1).unquensqueeze(1)
+            elif mask.dim() == 3:
+                mask = mask.unsqueeze(1)
+            if mask.size(-1) != seq_len_k:
+       
+             mask = F.pad(mask, (0, seq_len_k - mask.size(-1)))
+            
         
         
         attention_weights = F.softmax(scores, dim=-1)

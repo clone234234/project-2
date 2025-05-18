@@ -21,35 +21,35 @@ class MultiHeadAttention(nn.Module):
         self.v_linear = nn.Linear(d_model, d_model)
         self.output_linear = nn.Linear(d_model, d_model)
         
-    def forward(self, q, k, v, mask=None):
-        batch_size = q.size(0)
-        q = self.q_linear(q).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)  
-        k = self.k_linear(k).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)  
-        v = self.v_linear(v).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)  
-        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)  
     
+    def forward(self, q, k, v, mask=None):
+        batch_size = q.size(0)    
+        q = self.q_linear(q).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        k = self.k_linear(k).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        v = self.v_linear(v).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
+        
         if mask is not None:
-            # Handle different mask dimensions
-            if mask.dim() == 2:
-                mask = mask.unsqueeze(1).unsqueeze(1)  
-            elif mask.dim() == 3:
-                mask = mask.unsqueeze(1) 
+            if mask.dim() == 3:
+                mask = mask.unsqueeze(1)  
+            elif mask.dim() == 2:
+                mask = mask.unsqueeze(1).unsqueeze(1)
                 
-            seq_len_q, seq_len_k = scores.size(-2), scores.size(-1)
-            if mask.size(-1) != seq_len_k:
-                mask = F.pad(mask, (0, seq_len_k - mask.size(-1)))
-            scores = scores.masked_fill(mask == 0, -1e9)
+            mask = mask.expand_as(scores)
+            if mask.dtype == torch.bool:
+                scores = scores.masked_fill(mask, float('-inf'))
+            else:
+                 scores = scores + mask
         
         attention_weights = F.softmax(scores, dim=-1)
         attention_weights = F.dropout(attention_weights, p=self.dropout, training=self.training)
         
-        attention_output = torch.matmul(attention_weights, v)  
-
+        attention_output = torch.matmul(attention_weights, v)
         attention_output = attention_output.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
         output = self.output_linear(attention_output)
         
         return output
-
 
 class PositionwiseFeedForward(nn.Module):
     def __init__(self, d_model, d_ff, dropout=0.1):
@@ -120,11 +120,9 @@ class DecoderLayer(nn.Module):
         attn_output = self.self_attn(x, x, x, tgt_mask)
         x = self.norm1(x + self.dropout1(attn_output))
         
-
         attn_output = self.cross_attn(x, memory, memory, src_mask)
         x = self.norm2(x + self.dropout2(attn_output))
         
-
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout3(ff_output))
         
@@ -174,11 +172,13 @@ class Transformer(nn.Module):
                 nn.init.xavier_uniform_(p)
                 
     def encode(self, src, src_mask):
+        src = src.to(self.src_embedding.weight.device)
         src = self.src_embedding(src) * math.sqrt(self.src_embedding.embedding_dim)
         src = self.positional_encoding(src)
         return self.encoder(src, src_mask)
     
     def decode(self, tgt, memory, src_mask, tgt_mask):
+        tgt = tgt.to(self.tgt_embedding.weight.device)
         tgt = self.tgt_embedding(tgt) * math.sqrt(self.tgt_embedding.embedding_dim)
         tgt = self.positional_encoding(tgt)
         return self.decoder(tgt, memory, src_mask, tgt_mask)
@@ -186,11 +186,15 @@ class Transformer(nn.Module):
     def forward(self, src, tgt=None, src_mask=None, tgt_mask=None):
         if tgt is None:
             tgt = src
+            
+        # Ensure masks are properly created and have correct shapes
         if src_mask is None:
             src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
         if tgt_mask is None:
             seq_len = tgt.size(1)
-            tgt_mask = torch.triu(torch.ones(seq_len, seq_len, device=src.device), diagonal=1)
+            device = src.device
+            # Create a square mask for the target sequence (to prevent looking ahead)
+            tgt_mask = torch.triu(torch.ones((seq_len, seq_len), device=device), diagonal=1)
             tgt_mask = tgt_mask.masked_fill(tgt_mask == 1, float('-inf')).unsqueeze(0).unsqueeze(0)
             
         memory = self.encode(src, src_mask)

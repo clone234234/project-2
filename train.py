@@ -61,36 +61,35 @@ def train_transformer(model, data, vocab, num_epochs=10, batch_size=32, device='
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
-        for i in range (0, len(data), batch_size):
+        for i in range(0, len(data), batch_size):
             batch_data = data[i:i+batch_size]
             src_tensor, tgt_tensor = batch(batch_data, vocab, device)
+            src_mask = (src_tensor != pad_idx).unsqueeze(1).unsqueeze(2)
+            seq_len = tgt_tensor.size(1)
+            tgt_padding_mask = (tgt_tensor != pad_idx).unsqueeze(1).unsqueeze(2)
             
-            src_mask = (src_tensor != 0).unsqueeze(1).unsqueeze(2)  
-            tgt_mask = (tgt_tensor != 0).unsqueeze(1).unsqueeze(2)  
+            look_ahead_mask = generate_mask(seq_len, device)
+            
+            look_ahead_mask = look_ahead_mask.unsqueeze(0).unsqueeze(0)
+            look_ahead_mask_bool = look_ahead_mask != float('-inf')
+            tgt_mask = tgt_padding_mask & look_ahead_mask_bool
             
             optimizer.zero_grad()
-            output = model(src_tensor, tgt_tensor[:, :-1], src_mask, tgt_mask[:, :-1, :-1])
-            loss = criterion(output.view(-1, output.size(-1)), tgt_tensor[:, 1:].reshape(-1))
+            output = model(src_tensor, tgt_tensor[:, :-1], src_mask, tgt_mask[:, :, :-1, :-1])
+            loss = criterion(output.reshape(-1, output.size(-1)), tgt_tensor[:, 1:].reshape(-1))
             loss.backward()
             optimizer.step()
-            
             total_loss += loss.item()
         print(f'Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data)}')
-
 if __name__ == "__main__":
     lines, vocab, vocab_size = preprocess_data()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Transformer(src_vocab_size=vocab_size, tgt_vocab_size=vocab_size, d_model=512, num_heads=8, d_ff=2048, num_layers=6, dropout=0.1).to(device)
     train_transformer(model, lines, vocab, num_epochs=10, batch_size=32, device=device)
-    torch.save(model.state_dict(), 'model.pth')
-
-  
-
-
-
-  
-
-
-
-
-
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'vocab_size': vocab_size,
+        'vocab': vocab
+    }, 'model.pth')
+    
+    print(f"Model trained and saved with vocabulary size: {vocab_size}")

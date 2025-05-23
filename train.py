@@ -117,27 +117,8 @@ def train_transformer(model, data, vocab, num_epochs=10, batch_size=32, device='
 if __name__ == "__main__":
     lines, vocab, vocab_size = preprocess_data()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    # Khởi tạo model - đảm bảo các tham số khớp với Transformer class của bạn
-    model = Transformer(src_vocab_size=vocab_size,
-                        tgt_vocab_size=vocab_size,
-                        d_model=512,
-                        num_heads=8,
-                        d_ff=2048,
-                        num_layers=6,
-                        dropout=0.1,
-                        # max_seq_length trong Transformer là cho PositionalEncoding,
-                        # có thể khác với max_seq_length dùng trong hàm batch.
-                        max_seq_length=5000 # Hoặc giá trị phù hợp khác
-                       ).to(device)
-
+    model = Transformer(src_vocab_size=vocab_size,tgt_vocab_size=vocab_size,d_model=512,num_heads=8,d_ff=2048,num_layers=6,dropout=0.1,max_seq_length=5000 ).to(device)
     print("Starting training...")
-    train_transformer(model, lines, vocab, num_epochs=10, batch_size=32, device=device) # Gọi hàm đã sửa
-
-    torch.save({
-        'model_state_dict': model.state_dict(),
-        'vocab_size': vocab_size,
-        'vocab': vocab
-    }, 'model.pth')
-
+    train_transformer(model, lines, vocab, num_epochs=10, batch_size=32, device=device) 
+    torch.save({'model_state_dict': model.state_dict(),'vocab_size': vocab_size,'vocab': vocab}, 'model.pth')
     print(f"Model trained and saved with vocabulary size: {vocab_size}")

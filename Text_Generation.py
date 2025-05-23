@@ -69,7 +69,7 @@ def chat(model, vocab, device='cpu'):
             try:
                 length_part = user_input.split('length:')[1].split()[0]
                 max_length = int(length_part)
-                max_length = max(5, min(200, max_length))  # Clamp between 5 and 200
+                max_length = max(5, min(200, max_length))  
                 user_input = user_input.replace(f'length:{length_part}', '').strip()
                 print(f"[Maximum length: {max_length}]")
             except:

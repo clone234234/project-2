@@ -23,6 +23,8 @@ def generate_mask(sz, device):
     mask = mask.masked_fill(mask == 1, float('-inf'))
     return mask
 
+
+
 def batch(batch_data, vocab, device, max_seq_length=50):
 
     src_seqs = [line for line in batch_data]
@@ -54,42 +56,88 @@ def batch(batch_data, vocab, device, max_seq_length=50):
     tgt_tensor = torch.tensor(processed_tgt, dtype=torch.long, device=device)
     
     return src_tensor, tgt_tensor
+
+
+
+
 def train_transformer(model, data, vocab, num_epochs=10, batch_size=32, device='cpu'):
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     pad_idx = vocab['<pad>']
-    criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_idx, reduction='mean')
+
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
+        num_batches_processed = 0
         for i in range(0, len(data), batch_size):
             batch_data = data[i:i+batch_size]
-            src_tensor, tgt_tensor = batch(batch_data, vocab, device)
-            src_mask = (src_tensor != pad_idx).unsqueeze(1).unsqueeze(2)
-            seq_len = tgt_tensor.size(1)
-            tgt_padding_mask = (tgt_tensor != pad_idx).unsqueeze(1).unsqueeze(2)
-            
-            look_ahead_mask = generate_mask(seq_len, device)
-            
-            look_ahead_mask = look_ahead_mask.unsqueeze(0).unsqueeze(0)
-            look_ahead_mask_bool = look_ahead_mask != float('-inf')
-            tgt_mask = tgt_padding_mask & look_ahead_mask_bool
-            
+            src_tensor, tgt_tensor = batch(batch_data, vocab, device) 
+            src_keep_mask = (src_tensor != pad_idx).unsqueeze(1).unsqueeze(2) 
+
+            seq_len_tgt_full = tgt_tensor.size(1)
+
+            tgt_padding_keep_mask_full = (tgt_tensor != pad_idx).unsqueeze(1).unsqueeze(2) 
+
+            look_ahead_mask_float = generate_mask(seq_len_tgt_full, device)
+
+            look_ahead_keep_mask_bool = (look_ahead_mask_float != float('-inf')).unsqueeze(0).unsqueeze(0) 
+
+            tgt_keep_mask_full = tgt_padding_keep_mask_full & look_ahead_keep_mask_bool 
+
+            tgt_mask_for_decoder_self_attn = tgt_keep_mask_full[:, :, :-1, :-1] 
+
             optimizer.zero_grad()
-            output = model(src_tensor, tgt_tensor[:, :-1], src_mask, tgt_mask[:, :, :-1, :-1])
-            loss = criterion(output.reshape(-1, output.size(-1)), tgt_tensor[:, 1:].reshape(-1))
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data)}')
+            output = model(src_tensor, tgt_tensor[:, :-1], src_keep_mask, tgt_mask_for_decoder_self_attn)
+
+
+            output_flat = output.reshape(-1, output.size(-1))
+            target_for_loss_flat = tgt_tensor[:, 1:].reshape(-1)
+
+
+            non_pad_mask_for_loss = (target_for_loss_flat != pad_idx)
+            num_valid_targets = non_pad_mask_for_loss.sum().item()
+
+            if num_valid_targets > 0:
+                loss = criterion(output_flat[non_pad_mask_for_loss], target_for_loss_flat[non_pad_mask_for_loss])
+
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                num_batches_processed += 1
+            else:
+                pass
+
+        if num_batches_processed > 0:
+            avg_loss = total_loss / num_batches_processed
+            print(f'Epoch {epoch+1}/{num_epochs}, Processed Batches: {num_batches_processed}, Avg Loss: {avg_loss:.4f}')
+        else:
+            print(f'Epoch {epoch+1}/{num_epochs}: No batches were processed (all targets might have been padding).')
+
+
 if __name__ == "__main__":
     lines, vocab, vocab_size = preprocess_data()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = Transformer(src_vocab_size=vocab_size, tgt_vocab_size=vocab_size, d_model=512, num_heads=8, d_ff=2048, num_layers=6, dropout=0.1).to(device)
-    train_transformer(model, lines, vocab, num_epochs=10, batch_size=32, device=device)
+
+    # Khởi tạo model - đảm bảo các tham số khớp với Transformer class của bạn
+    model = Transformer(src_vocab_size=vocab_size,
+                        tgt_vocab_size=vocab_size,
+                        d_model=512,
+                        num_heads=8,
+                        d_ff=2048,
+                        num_layers=6,
+                        dropout=0.1,
+                        # max_seq_length trong Transformer là cho PositionalEncoding,
+                        # có thể khác với max_seq_length dùng trong hàm batch.
+                        max_seq_length=5000 # Hoặc giá trị phù hợp khác
+                       ).to(device)
+
+    print("Starting training...")
+    train_transformer(model, lines, vocab, num_epochs=10, batch_size=32, device=device) # Gọi hàm đã sửa
+
     torch.save({
         'model_state_dict': model.state_dict(),
         'vocab_size': vocab_size,
         'vocab': vocab
     }, 'model.pth')
-    
+
     print(f"Model trained and saved with vocabulary size: {vocab_size}")

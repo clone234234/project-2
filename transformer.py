@@ -38,11 +38,14 @@ class MultiHeadAttention(nn.Module):
                 
             mask = mask.expand_as(scores)
             if mask.dtype == torch.bool:
-                scores = scores.masked_fill(mask, float('-inf'))
+                scores = scores.masked_fill(~mask, float('-inf')) 
+                
             else:
                  scores = scores + mask
         
+
         attention_weights = F.softmax(scores, dim=-1)
+        attention_weights = torch.clamp(attention_weights, min=1e-9, max=1.0)
         attention_weights = F.dropout(attention_weights, p=self.dropout, training=self.training)
         
         attention_output = torch.matmul(attention_weights, v)
@@ -186,16 +189,17 @@ class Transformer(nn.Module):
     def forward(self, src, tgt=None, src_mask=None, tgt_mask=None):
         if tgt is None:
             tgt = src
-            
-        # Ensure masks are properly created and have correct shapes
+
         if src_mask is None:
             src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
         if tgt_mask is None:
             seq_len = tgt.size(1)
             device = src.device
-            # Create a square mask for the target sequence (to prevent looking ahead)
-            tgt_mask = torch.triu(torch.ones((seq_len, seq_len), device=device), diagonal=1)
-            tgt_mask = tgt_mask.masked_fill(tgt_mask == 1, float('-inf')).unsqueeze(0).unsqueeze(0)
+    
+
+            tgt_mask = torch.triu(torch.ones((seq_len, seq_len), device=device), diagonal=1).bool()
+            tgt_mask = tgt_mask.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, seq_len)
+
             
         memory = self.encode(src, src_mask)
         output = self.decode(tgt, memory, src_mask, tgt_mask)

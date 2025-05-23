@@ -1,3 +1,6 @@
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+import torch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -56,7 +59,7 @@ def chat(model, vocab, device='cpu'):
             try:
                 temp_part = user_input.split('temp:')[1].split()[0]
                 temperature = float(temp_part)
-                temperature = max(0.1, min(2.0, temperature))  # Clamp between 0.1 and 2.0
+                temperature = max(0.1, min(2.0, temperature))  
                 user_input = user_input.replace(f'temp:{temp_part}', '').strip()
                 print(f"[Using temperature: {temperature}]")
             except:

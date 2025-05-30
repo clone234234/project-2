@@ -29,8 +29,6 @@ def batch(batch_data, vocab, device, max_seq_length=50):
 
     src_seqs = [line for line in batch_data]
     tgt_seqs = [line for line in batch_data]
-    if '<pad>' not in vocab:
-        vocab['<pad>'] = len(vocab)
     pad_idx = vocab['<pad>']
 
     processed_src = []
@@ -60,7 +58,7 @@ def batch(batch_data, vocab, device, max_seq_length=50):
 
 
 
-def train_transformer(model, data, vocab, num_epochs=10, batch_size=32, device='cpu'):
+def train_transformer(model, data, vocab, num_epochs=30, batch_size=32, device='cpu'):
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     pad_idx = vocab['<pad>']
     criterion = nn.CrossEntropyLoss(ignore_index=pad_idx, reduction='mean')
@@ -98,7 +96,7 @@ def train_transformer(model, data, vocab, num_epochs=10, batch_size=32, device='
             num_valid_targets = non_pad_mask_for_loss.sum().item()
 
             if num_valid_targets > 0:
-                loss = criterion(output_flat[non_pad_mask_for_loss], target_for_loss_flat[non_pad_mask_for_loss])
+                loss = criterion(output_flat, target_for_loss_flat)
 
                 loss.backward()
                 optimizer.step()
@@ -119,6 +117,6 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Transformer(src_vocab_size=vocab_size,tgt_vocab_size=vocab_size,d_model=512,num_heads=8,d_ff=2048,num_layers=6,dropout=0.1,max_seq_length=5000 ).to(device)
     print("Starting training...")
-    train_transformer(model, lines, vocab, num_epochs=10, batch_size=32, device=device) 
+    train_transformer(model, lines, vocab, num_epochs=30, batch_size=32, device=device) 
     torch.save({'model_state_dict': model.state_dict(),'vocab_size': vocab_size,'vocab': vocab}, 'model.pth')
     print(f"Model trained and saved with vocabulary size: {vocab_size}")

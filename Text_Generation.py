@@ -1,7 +1,8 @@
 import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+os.environ['CUDA_LAUNCH_BLOCKING']="1"
+os.environ['TORCH_USE_CUDA_DSA'] = "1"
 import torch
-import torch
+torch.cuda.empty_cache()
 import torch.nn as nn
 import torch.nn.functional as F
 from transformer import Transformer
@@ -23,7 +24,7 @@ def generate_text(model, vocab, start_text, max_length=50, device='cpu', tempera
                 
                 next_token_logits = next_token_logits - next_token_logits.max(dim=-1, keepdim=True)[0]  
                 next_token_probs = F.softmax(next_token_logits, dim=-1)
-                
+
                
                 if temperature > 0.7:  
                     next_token = torch.multinomial(next_token_probs, num_samples=1)
@@ -31,22 +32,22 @@ def generate_text(model, vocab, start_text, max_length=50, device='cpu', tempera
                     next_token = torch.argmax(next_token_probs, dim=-1).unsqueeze(-1)
                 
                 next_token_idx = next_token[0].item()
-                if next_token_idx in idx_2_char:
+                if 0 <= next_token_idx < len(vocab):
                     next_char = idx_2_char[next_token_idx]
                     generated_text += next_char
                     input_tensor = torch.cat((input_tensor, next_token), dim=1)
                 else:
+                    print(f"Invalid token ID: {next_token_idx}")
                     break
             except RuntimeError as e:
                 print(f"Error during text generation: {e}")
                 break
-    
+ 
+  
     return generated_text
 
 def chat(model, vocab, device='cpu'):
     print("Chat with the transformer model (type 'exit' to quit):")
-    print(" - 'temp:0.8' to set temperature (0.1-2.0, lower is more deterministic)")
-    print(" - 'length:30' to set maximum generation length")
     
     while True:
         user_input = input("You: ")

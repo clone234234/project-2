@@ -102,53 +102,6 @@ def generate_text(model, vocab, start_text, max_length=50, device='cpu', tempera
     
     return generated_text
 
-def chat(model, vocab, device='cpu'):
-    print("Chat with the transformer model (type 'exit' to quit):")
-    print("Commands: temp:X.X (set temperature), length:N (set max length)")
-    
-    while True:
-        user_input = input("\nYou: ")
-        if user_input.lower() == 'exit':
-            break
-            
-        temperature = 0.7  
-        max_length = 30   
-        
-        original_input = user_input
-        if 'temp:' in user_input:
-            try:
-                temp_part = user_input.split('temp:')[1].split()[0]
-                temperature = float(temp_part)
-                temperature = max(0.1, min(2.0, temperature))
-                user_input = user_input.replace(f'temp:{temp_part}', '').strip()
-                print(f"[Temperature: {temperature}]")
-            except:
-                print("[Invalid temperature, using 0.7]")
-        
-        if 'length:' in user_input:
-            try:
-                length_part = user_input.split('length:')[1].split()[0]
-                max_length = int(length_part)
-                max_length = max(5, min(100, max_length))
-                user_input = user_input.replace(f'length:{length_part}', '').strip()
-                print(f"[Max length: {max_length}]")
-            except:
-                print("[Invalid length, using 30]")
-        
-        if not user_input.strip():
-            continue
-            
-        try:
-            print("Generating...")
-            response = generate_text(model, vocab, user_input, 
-                                   max_length=max_length, 
-                                   device=device, 
-                                   temperature=temperature)
-            print(f"Model: {response}")
-            
-        except Exception as e:
-            print(f"Error: {e}")
-            print("Try with different input")
 
 def test_generation(model, vocab, device):
     test_prompts = [
@@ -253,12 +206,10 @@ if __name__ == '__main__':
         model.to(device)
         print("Using untrained model")
     
-    # Validate model and vocab before testing
     if model is not None and vocab is not None:
         print(f"Model type: {type(model)}")
         print(f"Vocab type: {type(vocab)}")
         print(f"Vocab size: {len(vocab)}")
         test_generation(model, vocab, device)
-        chat(model, vocab, device=device)
     else:
         print("Failed to load or create model and vocabulary")

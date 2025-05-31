@@ -1,6 +1,5 @@
-import os
-os.environ['CUDA_LAUNCH_BLOCKING']="1"
-os.environ['TORCH_USE_CUDA_DSA'] = "1"
+import logging
+logging.basicConfig(level=logging.DEBUG)
 import torch
 torch.cuda.empty_cache()
 import torch.nn as nn
@@ -9,133 +8,239 @@ from transformer import Transformer
 
 def generate_text(model, vocab, start_text, max_length=50, device='cpu', temperature=1.0):
     model.eval()
+
     idx_2_char = {idx: char for char, idx in vocab.items()}
-    start_indices = [vocab.get(char, vocab['<pad>']) for char in start_text]
+    vocab_size = len(vocab)
+    
+    print(f"Generating for: '{start_text}' (temp={temperature})")
+
+    start_indices = []
+    for char in start_text:
+        if char in vocab:
+            start_indices.append(vocab[char])
+        else:
+            print(f"Warning: '{char}' not in vocabulary, skipping")
+    
+    if not start_indices:
+        print("No valid characters in start_text, using space")
+        start_indices = [vocab.get(' ', vocab.get('<pad>', 0))]
+    
     input_tensor = torch.tensor(start_indices, dtype=torch.long, device=device).unsqueeze(0)
     generated_text = start_text
     
-    for _ in range(max_length):
+    for i in range(max_length):
         with torch.no_grad():
-            src_mask = (input_tensor != vocab['<pad>']).unsqueeze(1).unsqueeze(2).to(device)
             try:
-                output = model(input_tensor, input_tensor, src_mask)
-                next_token_logits = output[:, -1, :] / temperature  
+                seq_len = input_tensor.size(1)
+                src_mask = None  
                 
+                tgt_mask = torch.tril(torch.ones(seq_len, seq_len, device=device)).bool()
+                tgt_mask = tgt_mask.unsqueeze(0).unsqueeze(0)
+                output = model(input_tensor, input_tensor, src_mask, tgt_mask)
+                next_token_logits = output[:, -1, :]
                 
-                next_token_logits = next_token_logits - next_token_logits.max(dim=-1, keepdim=True)[0]  
-                next_token_probs = F.softmax(next_token_logits, dim=-1)
-
-               
-                if temperature > 0.7:  
-                    next_token = torch.multinomial(next_token_probs, num_samples=1)
-                else:  
-                    next_token = torch.argmax(next_token_probs, dim=-1).unsqueeze(-1)
+                if temperature != 1.0 and temperature > 0:
+                    next_token_logits = next_token_logits / temperature
                 
-                next_token_idx = next_token[0].item()
-                if 0 <= next_token_idx < len(vocab):
-                    next_char = idx_2_char[next_token_idx]
-                    generated_text += next_char
-                    input_tensor = torch.cat((input_tensor, next_token), dim=1)
+                k = min(5, vocab_size)  
+                top_k_logits, top_k_indices = torch.topk(next_token_logits, k)
+                
+                top_k_probs = F.softmax(top_k_logits, dim=-1)
+                
+                valid_mask = top_k_probs > 0.01
+                if valid_mask.sum() == 0:
+                    next_token_idx = top_k_indices[0, 0].item()
                 else:
-                    print(f"Invalid token ID: {next_token_idx}")
+                    if temperature > 0.7:
+                        filtered_probs = top_k_probs * valid_mask.float()
+                        filtered_probs = filtered_probs / filtered_probs.sum()
+                        sampled_idx = torch.multinomial(filtered_probs, 1)
+                        next_token_idx = top_k_indices.gather(-1, sampled_idx)[0].item()
+                    else:
+                        valid_indices = top_k_indices[valid_mask]
+                        next_token_idx = valid_indices[0].item()
+                
+                if next_token_idx < 0 or next_token_idx >= vocab_size:
+                    print(f"Invalid token index {next_token_idx}, stopping")
                     break
-            except RuntimeError as e:
-                print(f"Error during text generation: {e}")
+                
+                if next_token_idx not in idx_2_char:
+                    print(f"Token {next_token_idx} not in idx_2_char mapping, stopping")
+                    break
+                
+                next_char = idx_2_char[next_token_idx]
+                
+                if len(generated_text) >= 3:
+                    if generated_text[-2:] == next_char * 2:
+                        print("Detected character repetition, stopping")
+                        break
+                
+                    if len(generated_text) >= 6:
+                        last_3_chars = generated_text[-3:]
+                        if last_3_chars == next_char + last_3_chars[:2]:
+                            print("Detected pattern repetition, stopping")
+                            break
+                
+                generated_text += next_char
+                
+                next_token_tensor = torch.tensor([[next_token_idx]], device=device)
+                input_tensor = torch.cat((input_tensor, next_token_tensor), dim=1)
+                
+                if next_char in '.!?\n' and len(generated_text) > len(start_text) + 5:
+                    print(f"Found end punctuation: '{next_char}', stopping")
+                    break
+
+                if input_tensor.size(1) > 100:
+                    print("Sequence too long, stopping")
+                    break
+                
+            except Exception as e:
+                print(f"Error at step {i}: {e}")
+                import traceback
+                traceback.print_exc()
                 break
- 
-  
+    
     return generated_text
 
 def chat(model, vocab, device='cpu'):
     print("Chat with the transformer model (type 'exit' to quit):")
+    print("Commands: temp:X.X (set temperature), length:N (set max length)")
     
     while True:
-        user_input = input("You: ")
+        user_input = input("\nYou: ")
         if user_input.lower() == 'exit':
             break
-        temperature = 1.0
-        max_length = 50
+            
+        temperature = 0.7  
+        max_length = 30   
         
+        original_input = user_input
         if 'temp:' in user_input:
             try:
                 temp_part = user_input.split('temp:')[1].split()[0]
                 temperature = float(temp_part)
-                temperature = max(0.1, min(2.0, temperature))  
+                temperature = max(0.1, min(2.0, temperature))
                 user_input = user_input.replace(f'temp:{temp_part}', '').strip()
-                print(f"[Using temperature: {temperature}]")
+                print(f"[Temperature: {temperature}]")
             except:
-                print("[Invalid temperature parameter, using default]")
+                print("[Invalid temperature, using 0.7]")
         
         if 'length:' in user_input:
             try:
                 length_part = user_input.split('length:')[1].split()[0]
                 max_length = int(length_part)
-                max_length = max(5, min(200, max_length))  
+                max_length = max(5, min(100, max_length))
                 user_input = user_input.replace(f'length:{length_part}', '').strip()
-                print(f"[Maximum length: {max_length}]")
+                print(f"[Max length: {max_length}]")
             except:
-                print("[Invalid length parameter, using default]")
+                print("[Invalid length, using 30]")
         
+        if not user_input.strip():
+            continue
+            
         try:
-            response = generate_text(model, vocab, user_input, max_length=max_length, 
-                                     device=device, temperature=temperature)
+            print("Generating...")
+            response = generate_text(model, vocab, user_input, 
+                                   max_length=max_length, 
+                                   device=device, 
+                                   temperature=temperature)
             print(f"Model: {response}")
+            
         except Exception as e:
             print(f"Error: {e}")
-            print("Try with different input or restart the program")
+            print("Try with different input")
 
-def load_model_and_vocab(model_path='model.pth', device='cpu'):
+def test_generation(model, vocab, device):
+    test_prompts = [
+        ("hello", 0.3, 20), 
+        ("how are", 0.5, 15),    
+        ("what is", 0.6, 25),  
+        ("I am", 0.4, 20)     
+    ]
+    
+    print("\n=== TESTING FIXED GENERATION ===")
+    for prompt, temp, length in test_prompts:
+        print(f"\nPrompt: '{prompt}' (temp={temp}, len={length})")
+        try:
+            result = generate_text(model, vocab, prompt, length, device, temp)
+            print(f"Result: '{result}'")
+        except Exception as e:
+            print(f"Error: {e}")
+            import traceback
+            traceback.print_exc()
+
+def load_model_and_vocab(device='cpu'):
+    """Load saved model and vocabulary correctly"""
     try:
-        checkpoint = torch.load(model_path, map_location=device)
-        vocab_size = checkpoint['vocab_size']
-        vocab = checkpoint['vocab']
-        
-        model = Transformer(
-            src_vocab_size=vocab_size,
-            tgt_vocab_size=vocab_size,
-            d_model=512,
-            num_heads=8,
-            d_ff=2048,
-            num_layers=6,
-            dropout=0.1
-        )
-        
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.to(device)
-        print("Model loaded successfully!")
-        return model, vocab
+        checkpoint = torch.load('model.pth', map_location=device)
+
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            vocab = checkpoint['vocab']
+            vocab_size = checkpoint['vocab_size']
+            model_config = checkpoint.get('model_config', {})
+            
+            model = Transformer(
+                src_vocab_size=model_config.get('src_vocab_size', vocab_size),
+                tgt_vocab_size=model_config.get('tgt_vocab_size', vocab_size),
+                d_model=model_config.get('d_model', 512),
+                num_heads=model_config.get('num_heads', 8),
+                d_ff=model_config.get('d_ff', 2048),
+                num_layers=model_config.get('num_layers', 6),
+                dropout=model_config.get('dropout', 0.1),
+                max_seq_length=model_config.get('max_seq_length', 5000)
+            )
+            model.load_state_dict(checkpoint['model_state_dict'])
+            model.to(device)
+            
+            print(f"Successfully loaded model and vocabulary from checkpoint")
+            print(f"Vocabulary size: {vocab_size}")
+            print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+            
+            return model, vocab
+        else:
+            print("Loading old format model")
+            model = checkpoint
+            with open('vocab.txt', 'r', encoding='utf-8') as f:
+                vocab = eval(f.read())
+            model.to(device)
+            print("Loaded saved model and vocabulary")
+            return model, vocab
+            
     except Exception as e:
-        print(f"Error loading model: {e}")
+        print(f"Could not load saved model/vocab: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None
 
-def load_vocab_from_file(file_path='input.txt'):
+def load_vocab_from_file(vocab_file='vocab.txt'):
+    """Load vocabulary from file"""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            text = f.read()
-    except FileNotFoundError:
-        print(f"Warning: {file_path} not found. Using a basic vocabulary instead.")
-        text = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,?!-:;"
-   
-    special_tokens = ['<pad>']
-    chars = sorted(list(set(text)))
-    all_tokens = special_tokens + chars
-    vocab = {char: idx for idx, char in enumerate(all_tokens)}
+        with open(vocab_file, 'r', encoding='utf-8') as f:
+            vocab = eval(f.read())
+        return vocab
+    except Exception as e:
+        print(f"Error loading vocabulary: {e}")
+        return {'<pad>': 0, '<unk>': 1}
     
-    return vocab
-
 if __name__ == '__main__':
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    try:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        print(f"Using device: {device}")
+    except Exception as e:
+        print(f"Error initializing device: {e}")
+        device = torch.device('cpu')
+        print("Falling back to CPU")
     
     model, vocab = load_model_and_vocab(device=device)
     
     if model is None or vocab is None:
-
         vocab = load_vocab_from_file()
         vocab_size = len(vocab)
         print(f"Vocabulary size: {vocab_size}")
         
-  
         model = Transformer(
             src_vocab_size=vocab_size,
             tgt_vocab_size=vocab_size,
@@ -146,6 +251,14 @@ if __name__ == '__main__':
             dropout=0.1
         )
         model.to(device)
-        print("Starting with untrained model")
+        print("Using untrained model")
     
-    chat(model, vocab, device=device)
+    # Validate model and vocab before testing
+    if model is not None and vocab is not None:
+        print(f"Model type: {type(model)}")
+        print(f"Vocab type: {type(vocab)}")
+        print(f"Vocab size: {len(vocab)}")
+        test_generation(model, vocab, device)
+        chat(model, vocab, device=device)
+    else:
+        print("Failed to load or create model and vocabulary")

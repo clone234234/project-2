@@ -12,7 +12,7 @@ def preprocess_data():
         filtered_line = ''.join(char for char in line if char.isalnum() or char in ' .,?!-:;')
         if filtered_line:  
             processed_lines.append(filtered_line)
-    special_tokens = ['<pad>']
+    special_tokens = ['<pad>', '<unk>']
     chars= sorted(list(set(''.join(processed_lines))))
     all_tokens = special_tokens + chars
     vocab= {char: idx for idx, char in enumerate(all_tokens)}        
@@ -115,8 +115,41 @@ def train_transformer(model, data, vocab, num_epochs=30, batch_size=32, device='
 if __name__ == "__main__":
     lines, vocab, vocab_size = preprocess_data()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = Transformer(src_vocab_size=vocab_size,tgt_vocab_size=vocab_size,d_model=512,num_heads=8,d_ff=2048,num_layers=6,dropout=0.1,max_seq_length=5000 ).to(device)
+    model = Transformer(
+        src_vocab_size=vocab_size,
+        tgt_vocab_size=vocab_size,
+        d_model=512,
+        num_heads=8,
+        d_ff=2048,
+        num_layers=6,
+        dropout=0.1,
+        max_seq_length=5000
+    ).to(device)
+    
     print("Starting training...")
-    train_transformer(model, lines, vocab, num_epochs=30, batch_size=32, device=device) 
-    torch.save({'model_state_dict': model.state_dict(),'vocab_size': vocab_size,'vocab': vocab}, 'model.pth')
-    print(f"Model trained and saved with vocabulary size: {vocab_size}")
+    train_transformer(model, lines, vocab, num_epochs=30, batch_size=32, device=device)
+
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'vocab': vocab,
+        'vocab_size': vocab_size,
+        'model_config': {
+            'src_vocab_size': vocab_size,
+            'tgt_vocab_size': vocab_size,
+            'd_model': 512,
+            'num_heads': 8,
+            'd_ff': 2048,
+            'num_layers': 6,
+            'dropout': 0.1,
+            'max_seq_length': 5000
+        }
+    }
+    
+    torch.save(checkpoint, 'model.pth')
+
+    with open('vocab.txt', 'w', encoding='utf-8') as f:
+        f.write(str(vocab))
+    
+    print(f"Model and vocabulary saved successfully!")
+    print(f"Vocabulary size: {vocab_size}")
+    print(f"Special tokens: <pad>={vocab['<pad>']}, <unk>={vocab['<unk>']}")

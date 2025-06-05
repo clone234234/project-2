@@ -55,7 +55,18 @@ def batch(batch_data, vocab, device, max_seq_length=50):
     
     return src_tensor, tgt_tensor
 
+def chain_of_thought_loss(output, target, pad_idx):
+    output_flat = output.reshape(-1, output.size(-1))
+    target_flat = target.reshape(-1)
 
+    non_pad_mask = (target_flat != pad_idx)
+    num_valid_targets = non_pad_mask.sum().item()
+
+    if num_valid_targets > 0:
+        loss = F.cross_entropy(output_flat, target_flat, ignore_index=pad_idx, reduction='mean')
+        return loss
+    else:
+        return torch.tensor(0.0, device=output.device)
 
 
 def train_transformer(model, data, vocab, num_epochs=30, batch_size=32, device='cpu'):
@@ -145,7 +156,7 @@ if __name__ == "__main__":
         }
     }
     
-    torch.save(checkpoint, 'model.pth')
+    torch.save(checkpoint, 'D:\\project-2\\Chain_Of_Thought\\model1.pth')
 
     with open('vocab.txt', 'w', encoding='utf-8') as f:
         f.write(str(vocab))

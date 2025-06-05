@@ -105,11 +105,9 @@ def generate_text(model, vocab, start_text, max_length=50, device='cpu', tempera
 
 def test_generation(model, vocab, device):
     test_prompts = [
-        ("hello", 0.3, 20), 
-        ("how are", 0.5, 15),    
-        ("what is", 0.6, 25),  
-        ("I am", 0.4, 20)     
-    ]
+    ("his mother is waiting him from home", 1, 150)
+]
+
     
     print("\n=== TESTING FIXED GENERATION ===")
     for prompt, temp, length in test_prompts:
@@ -189,22 +187,6 @@ if __name__ == '__main__':
     
     model, vocab = load_model_and_vocab(device=device)
     
-    if model is None or vocab is None:
-        vocab = load_vocab_from_file()
-        vocab_size = len(vocab)
-        print(f"Vocabulary size: {vocab_size}")
-        
-        model = Transformer(
-            src_vocab_size=vocab_size,
-            tgt_vocab_size=vocab_size,
-            d_model=512,
-            num_heads=8,
-            d_ff=2048,
-            num_layers=6,
-            dropout=0.1
-        )
-        model.to(device)
-        print("Using untrained model")
     
     if model is not None and vocab is not None:
         print(f"Model type: {type(model)}")
@@ -212,4 +194,5 @@ if __name__ == '__main__':
         print(f"Vocab size: {len(vocab)}")
         test_generation(model, vocab, device)
     else:
-        print("Failed to load or create model and vocabulary")
+        print(" Failed to load trained model and vocabulary")
+        print(" Please run train.py first to create model.pth and vocab.txt")

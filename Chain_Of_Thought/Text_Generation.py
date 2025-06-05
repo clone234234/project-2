@@ -123,7 +123,6 @@ def test_generation(model, vocab, device):
             traceback.print_exc()
 
 def load_model_and_vocab(device='cpu'):
-    """Load saved model and vocabulary correctly"""
     try:
         checkpoint = torch.load('model.pth', map_location=device)
 
@@ -166,7 +165,6 @@ def load_model_and_vocab(device='cpu'):
         return None, None
 
 def load_vocab_from_file(vocab_file='vocab.txt'):
-    """Load vocabulary from file"""
     try:
         with open(vocab_file, 'r', encoding='utf-8') as f:
             vocab = eval(f.read())
@@ -189,7 +187,6 @@ if __name__ == '__main__':
     
     model, vocab = load_model_and_vocab(device=device)
     
-
     
     if model is not None and vocab is not None:
         print(f"Model type: {type(model)}")

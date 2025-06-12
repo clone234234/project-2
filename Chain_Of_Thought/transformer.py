@@ -31,17 +31,21 @@ class MultiHeadAttention(nn.Module):
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
         
         if mask is not None:
-            if mask.dim() == 3:
+            if mask.dim() == 2: 
+                mask = mask.unsqueeze(0).unsqueeze(0) 
+            elif mask.dim() == 3:  
                 mask = mask.unsqueeze(1)  
-            elif mask.dim() == 2:
-                mask = mask.unsqueeze(1).unsqueeze(1)
-                
-            mask = mask.expand_as(scores)
+            elif mask.dim() == 4:  
+                pass
+            
+            if mask.size(1) == 1 and scores.size(1) == self.num_heads:
+                mask = mask.expand(-1, self.num_heads, -1, -1)
+            
+
             if mask.dtype == torch.bool:
-                scores = scores.masked_fill(~mask, float('-inf')) 
-                
+                scores = scores.masked_fill(mask, float('-inf'))
             else:
-                 scores = scores + mask
+                scores = scores + mask
         
 
         attention_weights = F.softmax(scores, dim=-1)
@@ -189,18 +193,19 @@ class Transformer(nn.Module):
     def forward(self, src, tgt=None, src_mask=None, tgt_mask=None):
         if tgt is None:
             tgt = src
-
         if src_mask is None:
             src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
+            
         if tgt_mask is None:
             seq_len = tgt.size(1)
             device = src.device
-    
-
-            tgt_mask = torch.triu(torch.ones((seq_len, seq_len), device=device), diagonal=1).bool()
-            tgt_mask = tgt_mask.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, seq_len)
-
+            tgt_mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1).bool()
             
+            tgt_padding_mask = (tgt != 0).unsqueeze(1).unsqueeze(2) 
+            tgt_padding_mask = tgt_padding_mask.expand(-1, -1, seq_len, -1)  
+    
+            tgt_mask = tgt_mask.unsqueeze(0).unsqueeze(0) | ~tgt_padding_mask
+
         memory = self.encode(src, src_mask)
         output = self.decode(tgt, memory, src_mask, tgt_mask)
         return self.output_linear(output)
